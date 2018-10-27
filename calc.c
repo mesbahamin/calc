@@ -10,6 +10,26 @@ struct BufHdr {
     uint8_t buf[];
 };
 
+void *cmalloc(size_t num_bytes)
+{
+    void *ptr = malloc(num_bytes);
+    if (!ptr) {
+        fprintf(stderr, "crealloc failed\n");
+        exit(1);
+    }
+    return ptr;
+}
+
+void *crealloc(void *ptr, size_t num_bytes)
+{
+    ptr = realloc(ptr, num_bytes);
+    if (!ptr) {
+        fprintf(stderr, "crealloc failed\n");
+        exit(1);
+    }
+    return ptr;
+}
+
 #define buf__hdr(b) ((struct BufHdr *)((uint8_t *)(b) - offsetof(struct BufHdr, buf)))
 #define buf_cap(b) ((b) ? buf__hdr(b)->cap : 0)
 #define buf_len(b) ((b) ? buf__hdr(b)->len : 0)
@@ -28,11 +48,11 @@ void *buf__grow(void *buf, size_t new_length, size_t element_size)
     struct BufHdr *new_hdr = NULL;
     if (buf)
     {
-        new_hdr = realloc(buf__hdr(buf), new_size);
+        new_hdr = crealloc(buf__hdr(buf), new_size);
     }
     else
     {
-        new_hdr = malloc(new_size);
+        new_hdr = cmalloc(new_size);
         new_hdr->len = 0;
     }
     new_hdr->cap = new_cap;
