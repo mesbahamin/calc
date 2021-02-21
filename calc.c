@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -70,16 +71,57 @@ void buf_test(void) {
     //printf("\n");
 }
 
+#define TOKEN_LIST            \
+    X(TOKEN_NONE,       "")   \
+    X(TOKEN_OP_ADD,     "+")  \
+    X(TOKEN_OP_SUB,     "-")  \
+    X(TOKEN_OP_BIN_OR,  "|")  \
+    X(TOKEN_OP_BIN_XOR, "^")  \
+    X(TOKEN_OP_MUL,     "*")  \
+    X(TOKEN_OP_DIV,     "/")  \
+    X(TOKEN_OP_MOD,     "%")  \
+    X(TOKEN_OP_SHIFT_L, "<<") \
+    X(TOKEN_OP_SHIFT_R, ">>") \
+    X(TOKEN_OP_BIN_AND, "&")  \
+    X(TOKEN_OP_BIN_NOT, "~")  \
+    X(TOKEN_INT,        "")   \
+                              \
+    X(_TOKEN_KIND_COUNT, "")
+
 enum TokenKind {
-    TOKEN_NONE = 0,
-    // first 128 values reserved to match up with ascii
-    TOKEN_INT = 128,
-    TOKEN_SHIFT_L,
-    TOKEN_SHIFT_R,
+#define X(kind, glyph) kind,
+    TOKEN_LIST
+#undef X
 };
 
+char *TokenKindNames[] = {
+#define X(kind, glyph) [kind] = #kind,
+    TOKEN_LIST
+#undef X
+};
+
+char *TokenKindGlyphs[] = {
+#define X(kind, glyph) [kind] = glyph,
+    TOKEN_LIST
+#undef X
+};
+
+#undef TOKEN_LIST
+
+char *token_kind_glyph(enum TokenKind k) {
+    assert(k >= TOKEN_NONE && k < TOKEN_INT);
+    assert(k <= (sizeof TokenKindNames / sizeof TokenKindGlyphs[0]));
+    return TokenKindGlyphs[k];
+}
+
+char *token_kind_name(enum TokenKind k) {
+    assert(k >= TOKEN_NONE && k < _TOKEN_KIND_COUNT);
+    assert(k <= (sizeof TokenKindNames / sizeof TokenKindNames[0]));
+    return TokenKindNames[k];
+}
+
 typedef struct Token {
-    uint32_t kind;
+    enum TokenKind kind;
     uint64_t val;
 } Token;
 
@@ -88,27 +130,20 @@ global_variable char *g_stream;
 #define ERROR() assert(false && "error")
 
 void print_token(struct Token token) {
-    switch(token.kind) {
-        case TOKEN_INT:
-            printf("TOKEN_INT: %lu\n", token.val);
-            break;
-        case TOKEN_SHIFT_L:
-            printf("TOKEN: '<<'\n");
-            break;
-        case TOKEN_SHIFT_R:
-            printf("TOKEN: '>>'\n");
-            break;
-        case TOKEN_NONE: // fallthrough
-        default:
-            printf("TOKEN: '%c'\n", token.kind);
-            break;
+    bool has_val = token.kind == TOKEN_INT;
+    if (has_val) {
+        printf("T: %s: %" PRIu64 "\n", token_kind_name(token.kind), token.val);
+    } else {
+        printf("T: %s\n", token_kind_name(token.kind));
     }
 }
 
 char *lex_next_token(Token *out_t) {
     assert(out_t);
 
+    // TODO: bounds check cursor advances
     char *cursor = g_stream;
+
     while (*cursor == ' ') {
         cursor++;
     }
@@ -136,7 +171,7 @@ char *lex_next_token(Token *out_t) {
         case '<':
             cursor++;
             if (*cursor == '<') {
-                out_t->kind = TOKEN_SHIFT_L;
+                out_t->kind = TOKEN_OP_SHIFT_L;
                 cursor++;
             } else {
                 ERROR();
@@ -145,14 +180,27 @@ char *lex_next_token(Token *out_t) {
         case '>':
             cursor++;
             if (*cursor == '>') {
-                out_t->kind = TOKEN_SHIFT_R;
+                out_t->kind = TOKEN_OP_SHIFT_R;
                 cursor++;
             } else {
                 ERROR();
             }
             break;
+        case '+': out_t->kind = TOKEN_OP_ADD;     cursor++; break;
+        case '-': out_t->kind = TOKEN_OP_SUB;     cursor++; break;
+        case '|': out_t->kind = TOKEN_OP_BIN_OR;  cursor++; break;
+        case '^': out_t->kind = TOKEN_OP_BIN_XOR; cursor++; break;
+        case '*': out_t->kind = TOKEN_OP_MUL;     cursor++; break;
+        case '/': out_t->kind = TOKEN_OP_DIV;     cursor++; break;
+        case '%': out_t->kind = TOKEN_OP_MOD;     cursor++; break;
+        case '&': out_t->kind = TOKEN_OP_BIN_AND; cursor++; break;
+        case '~': out_t->kind = TOKEN_OP_BIN_NOT; cursor++; break;
+        case '\0':
+            out_t->kind = TOKEN_NONE;
+            break;
         default:
-            out_t->kind = *cursor++;
+            printf("ERROR: '%c' %i\n", *cursor, (int)*cursor);
+            ERROR();
             break;
     }
 
@@ -194,33 +242,15 @@ Token token_require_kind(enum TokenKind kind) {
 }
 
 void lex_test(void) {
-    char *source = "+()_HELLO    1,23<<>>4+FOO!994";
+    char *source = "+123<<>>4+   ~994";
+    printf("lex_test: '%s'\n", source);
     g_stream = source;
     Token t = token_consume();
     while (t.kind) {
-        //print_token(t);
+        print_token(t);
         t = token_consume();
     }
 }
-
-enum OpKind {
-    OP_NONE,
-
-    OP_ADD,
-    OP_SUB,
-    OP_BIN_OR,
-    OP_BIN_XOR,
-
-    OP_MUL,
-    OP_DIV,
-    OP_MOD,
-    OP_SHIFT_L,
-    OP_SHIFT_R,
-    OP_BIN_AND,
-
-    OP_NEG,
-    OP_BIN_NOT,
-};
 
 enum ExprKind {
     EXPR_NONE,
@@ -229,95 +259,23 @@ enum ExprKind {
     EXPR_BINARY,
 };
 
-bool unary_op(enum OpKind *op) {
-    assert(op);
-    enum OpKind kind = OP_NONE;
-
-    Token next = token_peek();
-    switch (next.kind) {
-        case '-':
-            kind = OP_NEG;
-            break;
-        case '~':
-            kind = OP_BIN_NOT;
-            break;
-    }
-
-    if (kind != OP_NONE) {
-        *op = kind;
-        token_consume();
-        return true;
-    }
-
-    return false;
+bool is_unary_op(enum TokenKind o) {
+    return o == TOKEN_OP_SUB || o == TOKEN_OP_BIN_NOT;
 }
 
-bool mul_op(enum OpKind *op) {
-    assert(op);
-    enum OpKind kind = OP_NONE;
-
-    Token next = token_peek();
-    switch (next.kind) {
-        case '*':
-            kind = OP_MUL;
-            break;
-        case '/':
-            kind = OP_DIV;
-            break;
-        case '%':
-            kind = OP_MOD;
-            break;
-        case TOKEN_SHIFT_L:
-            kind = OP_SHIFT_L;
-            break;
-        case TOKEN_SHIFT_R:
-            kind = OP_SHIFT_R;
-            break;
-    }
-
-    if (kind != OP_NONE) {
-        *op = kind;
-        token_consume();
-        return true;
-    }
-
-    return false;
+bool is_mul_op(enum TokenKind o) {
+    return o == TOKEN_OP_MUL || o == TOKEN_OP_DIV || o == TOKEN_OP_MOD || o == TOKEN_OP_SHIFT_L || o == TOKEN_OP_SHIFT_R || o == TOKEN_OP_BIN_AND;
 }
 
-bool add_op(enum OpKind *op) {
-    assert(op);
-    enum OpKind kind = OP_NONE;
-
-    Token next = token_peek();
-    switch (next.kind) {
-        case '+':
-            kind = OP_ADD;
-            break;
-        case '-':
-            kind = OP_SUB;
-            break;
-        case '|':
-            kind = OP_BIN_OR;
-            break;
-        case '^':
-            kind = OP_BIN_XOR;
-            break;
-    }
-
-    if (kind != OP_NONE) {
-        *op = kind;
-        token_consume();
-        return true;
-    }
-
-    return false;
+bool is_add_op(enum TokenKind o) {
+    return o == TOKEN_OP_ADD || o == TOKEN_OP_SUB || o == TOKEN_OP_BIN_OR || o == TOKEN_OP_BIN_XOR;
 }
 
 typedef struct Expr Expr;
 
 struct Expr {
     enum ExprKind kind;
-    enum OpKind op;
+    enum TokenKind op;
     Expr *left;
     Expr *right;
     int32_t operand;
@@ -329,7 +287,8 @@ Expr *expr_alloc(void) {
     return e;
 }
 
-Expr *expr_unary(enum OpKind o, Expr *u) {
+Expr *expr_unary(enum TokenKind o, Expr *u) {
+    assert(is_unary_op(o));
     Expr *e = expr_alloc();
     *e = (Expr) {
         .kind = EXPR_UNARY,
@@ -339,7 +298,8 @@ Expr *expr_unary(enum OpKind o, Expr *u) {
     return e;
 }
 
-Expr *expr_binary(enum OpKind o, Expr *l, Expr *r) {
+Expr *expr_binary(enum TokenKind o, Expr *l, Expr *r) {
+    assert(is_mul_op(o) || is_add_op(o));
     Expr *e = expr_alloc();
     *e = (Expr) {
         .kind = EXPR_BINARY,
@@ -353,25 +313,7 @@ Expr *expr_binary(enum OpKind o, Expr *l, Expr *r) {
 void print_expr(Expr *e) {
     assert(e);
 
-    char *op = NULL;
-    switch (e->op) {
-        case OP_NONE:               break;
-        case OP_ADD:     op = "+";  break;
-        case OP_SUB:     op = "-";  break;
-        case OP_BIN_OR:  op = "|";  break;
-        case OP_BIN_XOR: op = "^";  break;
-        case OP_MUL:     op = "*";  break;
-        case OP_DIV:     op = "/";  break;
-        case OP_MOD:     op = "%";  break;
-        case OP_SHIFT_L: op = "<<"; break;
-        case OP_SHIFT_R: op = ">>"; break;
-        case OP_BIN_AND: op = "&";  break;
-        case OP_NEG:     op = "-";  break;
-        case OP_BIN_NOT: op = "~";  break;
-        default:
-            ERROR();
-            break;
-    }
+    char *op = token_kind_glyph(e->op);
 
     if (e->kind != EXPR_OPERAND) {
         printf("(");
@@ -382,9 +324,7 @@ void print_expr(Expr *e) {
             printf("%i", e->operand);
             break;
         case EXPR_UNARY:
-            if (op) {
-                printf("%s ", op);
-            }
+            printf("%s ", op);
             print_expr(e->left);
             break;
         case EXPR_BINARY:
@@ -419,8 +359,8 @@ Expr *parse_expr_operand(void) {
 }
 
 Expr *parse_expr_unary(void) {
-    enum OpKind op = 0;
-    if (unary_op(&op)) {
+    if (is_unary_op(token_peek().kind)) {
+        enum TokenKind op = token_consume().kind;
         return expr_unary(op, parse_expr_unary());
     } else {
         return parse_expr_operand();
@@ -429,8 +369,8 @@ Expr *parse_expr_unary(void) {
 
 Expr *parse_expr_mul(void) {
     Expr *e = parse_expr_unary();
-    enum OpKind op = 0;
-    while (mul_op(&op)) {
+    while (is_mul_op(token_peek().kind)) {
+        enum TokenKind op = token_consume().kind;
         e = expr_binary(op, e, parse_expr_unary());
     }
     return e;
@@ -438,8 +378,8 @@ Expr *parse_expr_mul(void) {
 
 Expr *parse_expr_add(void) {
     Expr *e = parse_expr_mul();
-    enum OpKind op = 0;
-    while (add_op(&op)) {
+    while (is_add_op(token_peek().kind)) {
+        enum TokenKind op = token_consume().kind;
         e = expr_binary(op, e, parse_expr_mul());
     }
 
@@ -461,8 +401,8 @@ Expr *parse_expr(void) {
 // expr = expr_add.
 // number = "0" .. "9" {"0" .. "9"}.
 void parse_test(void) {
-    char *source = "12*34 + 45/56 + -25";
-    printf("%s\n", source);
+    char *source = "12*34 + 45/56 + ~-25";
+    printf("parse_test: '%s'\n", source);
     g_stream = source;
     Expr *e = parse_expr();
     print_expr(e);
@@ -472,4 +412,6 @@ int main(void) {
     buf_test();
     lex_test();
     parse_test();
+    printf("\n");
+    return 0;
 }
