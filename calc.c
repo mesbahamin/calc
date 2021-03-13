@@ -390,6 +390,77 @@ Expr *parse_expr(void) {
     return parse_expr_add();
 }
 
+int32_t eval_expr(Expr *e) {
+    assert(e);
+
+    switch (e->kind) {
+        case EXPR_OPERAND:
+            return e->operand;
+            break;
+        case EXPR_UNARY: {
+            int32_t val = eval_expr(e->left);
+            switch (e->op) {
+                case TOKEN_OP_SUB:
+                    return -val;
+                    break;
+                case TOKEN_OP_BIN_NOT:
+                    return ~val;
+                    break;
+                default:
+                    ERROR();
+                    break;
+            }
+        } break;
+        case EXPR_BINARY: {
+            int32_t val1 = eval_expr(e->left);
+            int32_t val2 = eval_expr(e->right);
+
+            switch (e->op) {
+                case TOKEN_OP_ADD:
+                    return val1 + val2;
+                    break;
+                case TOKEN_OP_SUB:
+                    return val1 - val2;
+                    break;
+                case TOKEN_OP_BIN_OR:
+                    return val1 | val2;
+                    break;
+                case TOKEN_OP_BIN_XOR:
+                    return val1 ^ val2;
+                    break;
+                case TOKEN_OP_MUL:
+                    return val1 * val2;
+                    break;
+                case TOKEN_OP_DIV:
+                    if (val2 == 0) {
+                        ERROR();
+                    }
+                    return val1 / val2;
+                    break;
+                case TOKEN_OP_MOD:
+                    return val1 % val2;
+                    break;
+                case TOKEN_OP_SHIFT_L:
+                    return val1 << val2;
+                    break;
+                case TOKEN_OP_SHIFT_R:
+                    return val1 >> val2;
+                    break;
+                case TOKEN_OP_BIN_AND:
+                    return val1 & val2;
+                    break;
+                default:
+                    ERROR();
+                    break;
+            }
+        } break;
+        case EXPR_NONE: // fallthrough
+        default:
+            ERROR();
+            break;
+    }
+}
+
 // precedence climbing
 // op_unary = "-" | "~".
 // op_mul = "*" | "/" | "%" | "<<" | ">>" | "&".
@@ -400,18 +471,24 @@ Expr *parse_expr(void) {
 // expr_add = expr_mul {op_add expr_mul}.
 // expr = expr_add.
 // number = "0" .. "9" {"0" .. "9"}.
-void parse_test(void) {
+Expr *parse_test(void) {
     char *source = "12*34 + 45/56 + ~-25";
     printf("parse_test: '%s'\n", source);
     g_stream = source;
     Expr *e = parse_expr();
     print_expr(e);
+    printf("\n");
+    return e;
+}
+
+void eval_test(Expr *e) {
+    printf("Result: %i\n", eval_expr(e));
 }
 
 int main(void) {
     buf_test();
     lex_test();
-    parse_test();
-    printf("\n");
+    Expr *e = parse_test();
+    eval_test(e);
     return 0;
 }

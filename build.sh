@@ -10,7 +10,7 @@ build_dir="."
 
 cc=clang
 source_files=("calc.c")
-cflags=("-std=c99" "-Wall" "-Wextra" "-Wshadow" "-Wsign-compare" "-Wswitch-enum" "-Wno-missing-braces")
+cflags=("-std=c99" "-Wall" "-Wextra" "-Wshadow" "-Wsign-compare" "-Wno-missing-braces")
 debug_flags=("-g" "-Og" "-Werror")
 # shellcheck disable=SC2207
 ldflags=()
