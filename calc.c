@@ -84,6 +84,8 @@ void buf_test(void) {
     X(TOKEN_OP_SHIFT_R, ">>") \
     X(TOKEN_OP_BIN_AND, "&")  \
     X(TOKEN_OP_BIN_NOT, "~")  \
+    X(TOKEN_PAREN_L,    "(")  \
+    X(TOKEN_PAREN_R,    ")")  \
     X(TOKEN_INT,        "")   \
                               \
     X(_TOKEN_KIND_COUNT, "")
@@ -195,6 +197,8 @@ char *lex_next_token(Token *out_t) {
         case '%': out_t->kind = TOKEN_OP_MOD;     cursor++; break;
         case '&': out_t->kind = TOKEN_OP_BIN_AND; cursor++; break;
         case '~': out_t->kind = TOKEN_OP_BIN_NOT; cursor++; break;
+        case '(': out_t->kind = TOKEN_PAREN_L;    cursor++; break;
+        case ')': out_t->kind = TOKEN_PAREN_R;    cursor++; break;
         case '\0':
             out_t->kind = TOKEN_NONE;
             break;
@@ -223,14 +227,14 @@ Token token_consume(void) {
     return t;
 }
 
-Token token_consume_kind(enum TokenKind kind) {
+bool token_consume_kind(enum TokenKind kind) {
     Token t = token_peek();
     if (token_is_kind(t, kind)) {
         token_consume();
+        return true;
     } else {
-        t = (Token){0};
+        return false;
     }
-    return t;
 }
 
 Token token_require_kind(enum TokenKind kind) {
@@ -358,12 +362,24 @@ Expr *parse_expr_operand(void) {
     return e;
 }
 
+Expr *parse_expr(void);
+
+Expr *parse_expr_grouping(void) {
+    if (token_consume_kind(TOKEN_PAREN_L)) {
+        Expr *e = parse_expr();
+        token_require_kind(TOKEN_PAREN_R);
+        return e;
+    } else {
+        return parse_expr_operand();
+    }
+}
+
 Expr *parse_expr_unary(void) {
     if (is_unary_op(token_peek().kind)) {
         enum TokenKind op = token_consume().kind;
         return expr_unary(op, parse_expr_unary());
     } else {
-        return parse_expr_operand();
+        return parse_expr_grouping();
     }
 }
 
@@ -465,14 +481,15 @@ int32_t eval_expr(Expr *e) {
 // op_unary = "-" | "~".
 // op_mul = "*" | "/" | "%" | "<<" | ">>" | "&".
 // op_add = "+" | "-" | "|" | "^".
-// exp_operand = number.
+// expr_operand = number.
+// expr_grouping = "(" expr ")"
 // expr_unary = ([op_unary] exp_unary) | exp_base.
 // expr_mul = expr_unary {op_mul expr_unary}.
 // expr_add = expr_mul {op_add expr_mul}.
 // expr = expr_add.
 // number = "0" .. "9" {"0" .. "9"}.
 Expr *parse_test(void) {
-    char *source = "12*34 + 45/56 + ~-25";
+    char *source = "12*34 + 45/56 + ~-25 + ((4+6) / (6+4))";
     printf("parse_test: '%s'\n", source);
     g_stream = source;
     Expr *e = parse_expr();
