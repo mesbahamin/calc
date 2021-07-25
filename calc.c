@@ -18,7 +18,7 @@ struct BufHdr {
 void *cmalloc(size_t num_bytes) {
     void *ptr = malloc(num_bytes);
     if (!ptr) {
-        fprintf(stderr, "crealloc failed\n");
+        fprintf(stderr, "cmalloc failed\n");
         exit(1);
     }
     return ptr;
@@ -477,13 +477,13 @@ int32_t eval_expr(Expr *e) {
     }
 }
 
-// precedence climbing
+// Precedence Climbing
 // op_unary = "-" | "~".
 // op_mul = "*" | "/" | "%" | "<<" | ">>" | "&".
 // op_add = "+" | "-" | "|" | "^".
 // expr_operand = number.
-// expr_grouping = "(" expr ")"
-// expr_unary = ([op_unary] exp_unary) | exp_base.
+// expr_grouping = "(" expr ") | expr_operand."
+// expr_unary = ([op_unary] expr_unary) | expr_grouping.
 // expr_mul = expr_unary {op_mul expr_unary}.
 // expr_add = expr_mul {op_add expr_mul}.
 // expr = expr_add.
